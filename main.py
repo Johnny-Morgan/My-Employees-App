@@ -1,11 +1,12 @@
-import sys
+import sys, os
 import sqlite3
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import QPixmap, QFont
+from PIL import Image
 
 con = sqlite3.connect('employee.db')
 cur = con.cursor()
-
+default_image = 'person.png' # for when we don't have picture for employee
 
 class Main(QWidget):
     def __init__(self):
@@ -18,8 +19,11 @@ class Main(QWidget):
     def UI(self):
         self.main_design()
         self.layouts()
+        self.get_employees()
+        self.display_first_record()
 
     def main_design(self):
+        self.setStyleSheet("font-size: 14pt; font-family: Arial Bold;")
         self.employee_list = QListWidget()
         self.btn_new = QPushButton("New")
         self.btn_new.clicked.connect(self.add_employee)
@@ -53,6 +57,34 @@ class Main(QWidget):
         self.new_employee = AddEmployee()
         self.close()
 
+    # function to select employees from database and display in list
+    def get_employees(self):
+        query = "SELECT id, first_name, last_name FROM employee"
+        employees = cur.execute(query).fetchall()
+        for employee in employees:
+            self.employee_list.addItem(str(employee[0]) + "-" + employee[1] + " " + employee[2])
+
+    def display_first_record(self):
+        query = "SELECT * FROM employee ORDER BY ROWID ASC LIMIT 1"
+        employee = cur.execute(query).fetchone()
+        print(employee)
+        image = QLabel()
+        image.setPixmap(QPixmap("images/" + employee[5]))  # image at index 5
+        first_name = QLabel(employee[1])
+        last_name = QLabel(employee[2])
+        phone = QLabel(employee[3])
+        email = QLabel(employee[4])
+        address = QLabel(employee[6])
+
+        self.left_layout.setVerticalSpacing(20)
+        self.left_layout.addRow("", image)
+        self.left_layout.addRow("First Name: ", first_name)
+        self.left_layout.addRow("Last Name: ", last_name)
+        self.left_layout.addRow("Phone: ", phone)
+        self.left_layout.addRow("Email: ", email)
+        self.left_layout.addRow("Address: ", address)
+
+
 
 class AddEmployee(QWidget):
     def __init__(self):
@@ -65,6 +97,9 @@ class AddEmployee(QWidget):
     def UI(self):
         self.main_design()
         self.layouts()
+
+    def closeEvent(self, QCloseEvent):
+        self.main = Main() # open main window after close event
 
     def main_design(self):
         ##### Top layout widgets #####
@@ -90,10 +125,12 @@ class AddEmployee(QWidget):
         self.image_label = QLabel("Picture: ")
         self.image_button = QPushButton("Browse")
         self.image_button.setStyleSheet("background-color: orange; font-size: 10pt")
+        self.image_button.clicked.connect(self.upload_image)
         self.address_label = QLabel("Address: ")
         self.address_editor = QTextEdit()
-        self.address_button = QPushButton("Add")
-        self.address_button.setStyleSheet("background-color: orange; font-size: 10pt")
+        self.add_button = QPushButton("Add")
+        self.add_button.setStyleSheet("background-color: orange; font-size: 10pt")
+        self.add_button.clicked.connect(self.add_employee)
 
     def layouts(self):
         ##### Main layouts #####
@@ -120,10 +157,44 @@ class AddEmployee(QWidget):
         self.bottom_layout.addRow(self.email_label, self.email_entry)
         self.bottom_layout.addRow(self.image_label, self.image_button)
         self.bottom_layout.addRow(self.address_label, self.address_editor)
-        self.bottom_layout.addRow("", self.address_button)
+        self.bottom_layout.addRow("", self.add_button)
 
         ##### Setting main window layout #####
         self.setLayout(self.main_layout)
+
+    def upload_image(self):
+        global default_image
+        size = (128, 128)
+        self.file_name, ok = QFileDialog.getOpenFileName(self, 'Upload Image', '', 'Image Files (*.jpg *.png)')
+
+        if ok:
+            default_image = os.path.basename(self.file_name) # gets just actual name of file from location
+            image = Image.open(self.file_name)
+            image = image.resize(size)
+            image.save("images/{}".format(default_image))
+
+    def add_employee(self):
+        global default_image
+        first_name = self.first_name_entry.text()
+        last_name = self.last_name_entry.text()
+        phone = self.phone_entry.text()
+        email = self.email_entry.text()
+        image = default_image
+        address = self.address_editor.toPlainText()
+        if(first_name and last_name and phone != ""):
+            try:
+                query = "INSERT INTO employee (first_name, last_name, phone, email, image, address) VALUES(?, ?, ?, ?, ?, ?)"
+                cur.execute(query, (first_name, last_name, phone, email, image, address))
+                con.commit()
+                QMessageBox.information(self, "Success", "Employee has been added")
+                self.close() # close add employee window
+                self.main = Main() # open main window
+            except:
+                QMessageBox.information(self, "Warning", "Employee not added")
+
+        else:
+            QMessageBox.information(self, "Warning", "Fields can not be empty")
+
 
 def main():
     App = QApplication(sys.argv)
